@@ -18,12 +18,13 @@ from .webui import run_server  # type:ignore
 
 
 @register(
-    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.0.2"
+    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.0.3"
 )
 class AIOCensor(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
+        self.web_ui_process = None
 
         # 初始化内容审查流
         self.censor_flow = CensorFlow(config)
@@ -79,17 +80,57 @@ class AIOCensor(Star):
         )
         self.web_ui_process.start()
 
-    async def handle_message(self, event: AstrMessageEvent):
-        # 遍历消息中的每个组件
-        for comp in event.message_obj.message:
-            logger.debug(comp)
+    async def _handle_aiocqhttp_group_message(self, event, res):
+        """处理aiocqhttp平台的群消息"""
+        from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
+            AiocqhttpMessageEvent,
+        )
 
-            # 处理文本内容
+        if not isinstance(event, AiocqhttpMessageEvent):
+            return
+
+        group_id = int(event.get_group_id())
+        user_id = int(event.get_sender_id())
+        self_id = int(event.get_self_id())
+        message_id = int(event.message_obj.message_id)
+
+        if await admin_check(user_id, group_id, self_id, event.bot):
+            return  # 管理员跳过处置
+
+        res.extra.update({
+            "group_id": group_id,
+            "user_id": user_id,
+            "self_id": self_id,
+            "message_id": message_id,
+        })
+
+        if res.risk_level == RiskLevel.Block and self.config.get("enable_group_msg_censor"):
+            await dispose_msg(
+                message_id=message_id,
+                group_id=group_id,
+                user_id=user_id,
+                self_id=self_id,
+                client=event.bot,
+            )
+
+    async def handle_message(self, event: AstrMessageEvent):
+        """处理消息内容审查"""
+        if self.config.get("enable_blacklist"):
+            res = await self.censor_flow.submit_userid(
+                event.get_sender_id(), event.unified_msg_origin
+            )
+            if res.risk_level == RiskLevel.Block:
+                if self.config.get("enable_blacklist_log"):
+                    await self.db_mgr.add_audit_log(res)
+                event.stop_event()
+                return
+
+        # 遍历消息组件
+        for comp in event.message_obj.message:
             if isinstance(comp, Plain):
                 res = await self.censor_flow.submit_text(
                     comp.text, event.unified_msg_origin
                 )
-            # 处理图片内容（如果启用了图片审查）
             elif isinstance(comp, Image) and self.config.get("enable_image_censor"):
                 res = await self.censor_flow.submit_image(
                     comp.url, event.unified_msg_origin
@@ -97,72 +138,38 @@ class AIOCensor(Star):
             else:
                 continue
 
-            # 如果检测到风险内容
             if res.risk_level != RiskLevel.Pass:
                 user_id_str = event.get_sender_id()
                 res.extra = {"user_id_str": user_id_str}
-                # 处理aiocqhttp平台的群消息
+
+                # 处理平台特定逻辑
                 if event.get_platform_name() == "aiocqhttp" and event.get_group_id():
-                    from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
-                        AiocqhttpMessageEvent,
-                    )
-
-                    assert isinstance(event, AiocqhttpMessageEvent)
-
-                    group_id = int(event.get_group_id())
-                    user_id = int(event.get_sender_id())
-                    self_id = int(event.get_self_id())
-                    message_id = int(event.message_obj.message_id)
-
-                    if not await admin_check(user_id, group_id, self_id, event.bot):
-                        continue
-
-                    # 附加额外信息
-                    res.extra.update(
-                        {
-                            "group_id": group_id,
-                            "user_id": user_id,
-                            "self_id": self_id,
-                            "message_id": message_id,
-                        }
-                    )
-
-                    # 如果风险等级为阻止，则删除消息
-                    if res.risk_level == RiskLevel.Block:
-                        await dispose_msg(
-                            message_id=message_id,
-                            group_id=group_id,
-                            user_id=user_id,
-                            self_id=self_id,
-                            client=event.bot,
-                        )
+                    await self._handle_aiocqhttp_group_message(event, res)
                 else:
                     logger.warning("非aiocqhttp平台的群消息，无法自动处置")
 
-                # 记录审核日志
                 await self.db_mgr.add_audit_log(res)
+                if res.risk_level == RiskLevel.Block:
+                    event.stop_event()
                 break
 
     @filter.event_message_type(EventMessageType.ALL)
     async def is_baned(self, event: AstrMessageEvent):
         """黑名单判定"""
         if self.config.get("enable_blacklist"):
-            # 检查发送者ID是否在黑名单中
             res = await self.censor_flow.submit_userid(
                 event.get_sender_id(), event.unified_msg_origin
             )
             if res.risk_level == RiskLevel.Block:
                 if self.config.get("enable_blacklist_log"):
                     await self.db_mgr.add_audit_log(res)
-                # 阻止事件继续传播
                 event.stop_event()
 
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         """输出审核"""
-        if not self.config.get("enable_output_censor"):
-            return
-        await self.handle_message(event)
+        if self.config.get("enable_output_censor"):
+            await self.handle_message(event)
 
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)
     async def group_censor(self, event: AstrMessageEvent):
@@ -170,7 +177,6 @@ class AIOCensor(Star):
         if not self.config.get("enable_group_msg_censor"):
             return
 
-        # 检查群是否在指定列表中
         group_list = self.config.get("group_list", [])
         if group_list and event.get_group_id() not in group_list:
             return
@@ -180,24 +186,23 @@ class AIOCensor(Star):
     @filter.event_message_type(EventMessageType.PRIVATE_MESSAGE)
     async def private_censor(self, event: AstrMessageEvent):
         """私聊审核功能"""
-        if not self.config.get("enable_private_msg_censor"):
-            return
-
-        await self.handle_message(event)
+        if self.config.get("enable_private_msg_censor"):
+            await self.handle_message(event)
 
     @filter.on_llm_request()
     async def on_llm_request(self, request: ProviderRequest, event: AstrMessageEvent):
         """LLM 请求前的审核"""
         if not self.config.get("enable_llm_censor"):
             return
-        # 审查文本提示
+            
         res = await self.censor_flow.submit_text(
             request.prompt, event.unified_msg_origin
         )
         if res.risk_level != RiskLevel.Pass:
             await self.db_mgr.add_audit_log(res)
             event.stop_event()
-        # 审查图片URL
+            return
+
         for image_url in request.image_urls:
             res = await self.censor_flow.submit_image(
                 image_url, event.unified_msg_origin
@@ -205,32 +210,28 @@ class AIOCensor(Star):
             if res.risk_level != RiskLevel.Pass:
                 await self.db_mgr.add_audit_log(res)
                 event.stop_event()
+                return
 
     async def terminate(self):
         """清理资源"""
-        # 停止定时任务
         if hasattr(self, "scheduler"):
             self.scheduler.shutdown()
 
-        # 终止Web UI进程
         if self.web_ui_process:
             self.web_ui_process.terminate()
             self.web_ui_process.join(5)
-        # 关闭审查流
+
         await self.censor_flow.close()
-        # 关闭数据库连接
         await self.db_mgr.close()
 
     async def _update_censors(self):
         """定期更新审查器数据"""
         try:
-            # 更新黑名单用户ID
             black_list = await self.db_mgr.get_blacklist_entries()
             await self.censor_flow.userid_censor.build(
                 {entry.identifier for entry in black_list}
             )
 
-            # 更新敏感词
             if hasattr(self.censor_flow.text_censor, "build"):
                 sensitive_words = await self.db_mgr.get_sensitive_words()
                 await self.censor_flow.text_censor.build(

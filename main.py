@@ -103,10 +103,6 @@ class AIOCensor(Star):
         self_id = int(event.get_self_id())
         message_id = int(event.message_obj.message_id)
 
-        # 管理员跳过处置
-        if await admin_check(user_id, group_id, self_id, event.bot):
-            return
-
         res.extra.update(
             {
                 "group_id": group_id,
@@ -116,8 +112,10 @@ class AIOCensor(Star):
             }
         )
 
-        if res.risk_level == RiskLevel.Block and self.config.get(
-            "enable_group_msg_censor"
+        if (
+            res.risk_level == RiskLevel.Block
+            and self.config.get("enable_group_msg_censor")
+            and not await admin_check(user_id, group_id, self_id, event.bot)
         ):
             try:
                 await dispose_msg(

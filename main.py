@@ -13,7 +13,7 @@ from astrbot.core.provider.entites import LLMResponse
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
 from .censor_flow import CensorFlow  # type:ignore
-from .common import RiskLevel, admin_check, dispose_msg  # type:ignore
+from .common import RiskLevel, CensorResult, admin_check, dispose_msg  # type:ignore
 from .db import DBManager  # type:ignore
 from .webui import run_server  # type:ignore
 
@@ -90,7 +90,9 @@ class AIOCensor(Star):
         except Exception as e:
             logger.error(f"更新审查器数据失败: {e}")
 
-    async def _handle_aiocqhttp_group_message(self, event: AstrMessageEvent, res):
+    async def _handle_aiocqhttp_group_message(
+        self, event: AstrMessageEvent, res: CensorResult
+    ):
         """处理 aiocqhttp 平台的群消息"""
         from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
             AiocqhttpMessageEvent,

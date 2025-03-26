@@ -193,7 +193,7 @@ class AliyunCensor(CensorBase):
                     return RiskLevel.Pass, risk_words_set
                 elif risk_level == "low":
                     return RiskLevel.Pass, risk_words_set
-                elif risk_level == "block":
+                elif risk_level == "high":
                     return RiskLevel.Block, risk_words_set
                 else:
                     return RiskLevel.Review, risk_words_set

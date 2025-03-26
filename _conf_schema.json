@@ -8,11 +8,11 @@
     "type":"bool"
   },
   "enable_output_censor":{
-    "description":"是否启用输出审核",
+    "description":"是否启用LLM输出审核",
     "type":"bool"
   },
-  "enable_input_censor":{
-    "description":"是否启用LLM输入审核",
+  "enable_all_input_censor":{
+    "description":"是否启用全输入审核",
     "type":"bool"
   },
   "enable_image_censor":{

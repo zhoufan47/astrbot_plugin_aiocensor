@@ -129,7 +129,9 @@ class AIOCensor(Star):
             except Exception as e:
                 logger.error(f"消息处置失败: {e}")
 
-    async def handle_message(self, event: AstrMessageEvent, chain: list[BaseMessageComponent]):
+    async def handle_message(
+        self, event: AstrMessageEvent, chain: list[BaseMessageComponent]
+    ):
         """核心消息内容审查逻辑"""
         try:
             # 遍历消息组件进行审计
@@ -175,7 +177,7 @@ class AIOCensor(Star):
                 event.stop_event()
                 return
         if self.config.get("enable_all_input_censor"):
-            await self.handle_message(event,event.message_obj.message)
+            await self.handle_message(event, event.message_obj.message)
 
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)
     async def group_censor(self, event: AstrMessageEvent):
@@ -185,19 +187,36 @@ class AIOCensor(Star):
         group_list = self.config.get("group_list", [])
         if group_list and event.get_group_id() not in group_list:
             return
-        await self.handle_message(event,event.message_obj.message)
+        await self.handle_message(event, event.message_obj.message)
 
     @filter.event_message_type(EventMessageType.PRIVATE_MESSAGE)
     async def private_censor(self, event: AstrMessageEvent):
         """私聊消息审查"""
         if self.config.get("enable_private_msg_censor"):
-            await self.handle_message(event,event.message_obj.message)
+            await self.handle_message(event, event.message_obj.message)
 
     @filter.on_llm_response()
     async def output_censor(self, event: AstrMessageEvent, response: LLMResponse):
         """审核模型输出"""
         if self.config.get("enable_output_censor"):
-            await self.handle_message(event, response.result_chain.chain)
+            if not response.result_chain:
+                res = await self.censor_flow.submit_text(
+                    response.completion_text, event.unified_msg_origin
+                )
+                if res and res.risk_level != RiskLevel.Pass:
+                    res.extra = {"user_id_str": event.get_sender_id()}
+                    await self.db_mgr.add_audit_log(res)
+                    if res.risk_level == RiskLevel.Block:
+                        if (
+                            event.get_platform_name() == "aiocqhttp"
+                            and event.get_group_id()
+                        ):
+                            await self._handle_aiocqhttp_group_message(event, res)
+                        else:
+                            logger.warning("非 aiocqhttp 平台的群消息，无法自动处置")
+                        event.stop_event()
+            elif response.result_chain:
+                await self.handle_message(event, response.result_chain.chain)
 
     async def terminate(self):
         """清理资源"""

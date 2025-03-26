@@ -7,8 +7,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type:ignore
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image, Plain
-from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star, register
+from astrbot.core.message.components import BaseMessageComponent
+from astrbot.core.provider.entites import LLMResponse
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
 from .censor_flow import CensorFlow  # type:ignore
@@ -128,21 +129,11 @@ class AIOCensor(Star):
             except Exception as e:
                 logger.error(f"消息处置失败: {e}")
 
-    async def handle_message(self, event: AstrMessageEvent):
+    async def handle_message(self, event: AstrMessageEvent, chain: list[BaseMessageComponent]):
         """核心消息内容审查逻辑"""
         try:
-            # 检查黑名单（若启用）
-            if self.config.get("enable_blacklist"):
-                res = await self.censor_flow.submit_userid(
-                    event.get_sender_id(), event.unified_msg_origin
-                )
-                if res.risk_level == RiskLevel.Block:
-                    await self.db_mgr.add_audit_log(res)
-                    event.stop_event()
-                    return
-
             # 遍历消息组件进行审计
-            for comp in event.message_obj.message:
+            for comp in chain:
                 res = None
                 if isinstance(comp, Plain):
                     res = await self.censor_flow.submit_text(
@@ -172,11 +163,19 @@ class AIOCensor(Star):
         except Exception as e:
             logger.error(f"消息审查失败: {e}")
 
-    @filter.on_decorating_result()
-    async def on_decorating_result(self, event: AstrMessageEvent):
-        """输出内容审查"""
-        if self.config.get("enable_output_censor"):
-            await self.handle_message(event)
+    @filter.event_message_type(EventMessageType.ALL)
+    async def on_all_message(self, event: AstrMessageEvent):
+        """检查黑名单和全输入审查"""
+        if self.config.get("enable_blacklist"):
+            res = await self.censor_flow.submit_userid(
+                event.get_sender_id(), event.unified_msg_origin
+            )
+            if res.risk_level == RiskLevel.Block:
+                await self.db_mgr.add_audit_log(res)
+                event.stop_event()
+                return
+        if self.config.get("enable_all_input_censor"):
+            await self.handle_message(event,event.message_obj.message)
 
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)
     async def group_censor(self, event: AstrMessageEvent):
@@ -186,40 +185,19 @@ class AIOCensor(Star):
         group_list = self.config.get("group_list", [])
         if group_list and event.get_group_id() not in group_list:
             return
-        await self.handle_message(event)
+        await self.handle_message(event,event.message_obj.message)
 
     @filter.event_message_type(EventMessageType.PRIVATE_MESSAGE)
     async def private_censor(self, event: AstrMessageEvent):
         """私聊消息审查"""
         if self.config.get("enable_private_msg_censor"):
-            await self.handle_message(event)
+            await self.handle_message(event,event.message_obj.message)
 
-    @filter.on_llm_request()
-    async def on_llm_request(self, request: ProviderRequest, event: AstrMessageEvent):
-        """LLM 请求前审查"""
-        if not self.config.get("enable_llm_censor"):
-            return
-        try:
-            # 审查提示文本
-            res = await self.censor_flow.submit_text(
-                request.prompt, event.unified_msg_origin
-            )
-            if res.risk_level != RiskLevel.Pass:
-                await self.db_mgr.add_audit_log(res)
-                event.stop_event()
-                return
-
-            # 审查图像 URL
-            for image_url in request.image_urls:
-                res = await self.censor_flow.submit_image(
-                    image_url, event.unified_msg_origin
-                )
-                if res.risk_level != RiskLevel.Pass:
-                    await self.db_mgr.add_audit_log(res)
-                    event.stop_event()
-                    return
-        except Exception as e:
-            logger.error(f"LLM 请求审查失败: {e}")
+    @filter.on_llm_response()
+    async def output_censor(self, event: AstrMessageEvent, response: LLMResponse):
+        """审核模型输出"""
+        if self.config.get("enable_output_censor"):
+            await self.handle_message(event, response.result_chain.chain)
 
     async def terminate(self):
         """清理资源"""

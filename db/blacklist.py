@@ -1,7 +1,6 @@
 import time
 import uuid
-
-import aiosqlite
+import sqlite3
 
 from ..common.types import BlacklistEntry, DBError  # type: ignore
 
@@ -9,9 +8,9 @@ from ..common.types import BlacklistEntry, DBError  # type: ignore
 class BlacklistMixin:
     """黑名单相关功能"""
 
-    _db: aiosqlite.Connection | None
+    _db: sqlite3.Connection | None
 
-    async def _create_tables(self) -> None:
+    def _create_tables(self) -> None:
         """
         创建黑名单表。
 
@@ -21,19 +20,19 @@ class BlacklistMixin:
         if not self._db:
             raise DBError("数据库未初始化")
         try:
-            await self._db.execute("""
+            self._db.execute("""
             CREATE TABLE IF NOT EXISTS blacklist (
                 id TEXT PRIMARY KEY,
                 identifier TEXT UNIQUE NOT NULL,
                 reason TEXT,
                 updated_at INTEGER NOT NULL
             )""")
-            await self._db.commit()
-        except aiosqlite.Error as e:
-            await self._db.rollback()
+            self._db.commit()
+        except sqlite3.Error as e:
+            self._db.rollback()
             raise DBError(f"创建黑名单表失败: {e!s}")
 
-    async def add_blacklist_entry(
+    def add_blacklist_entry(
         self, identifier: str, reason: str | None = None
     ) -> str:
         """
@@ -54,19 +53,20 @@ class BlacklistMixin:
         entry_id = str(uuid.uuid4())
         current_time = int(time.time())
         try:
-            async with self._db.cursor() as cursor:
-                await cursor.execute(
-                    "INSERT INTO blacklist (id, identifier, reason, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(identifier) DO UPDATE SET reason = ?, updated_at = ? RETURNING id",
-                    (entry_id, identifier, reason, current_time, reason, current_time),
-                )
-                result = await cursor.fetchone()
-                await self._db.commit()
-                return result[0] if result else entry_id
-        except aiosqlite.Error as e:
-            await self._db.rollback()
+            cursor = self._db.cursor()
+            cursor.execute(
+                "INSERT INTO blacklist (id, identifier, reason, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(identifier) DO UPDATE SET reason = ?, updated_at = ? RETURNING id",
+                (entry_id, identifier, reason, current_time, reason, current_time),
+            )
+            result = cursor.fetchone()
+            self._db.commit()
+            cursor.close()
+            return result[0] if result else entry_id
+        except sqlite3.Error as e:
+            self._db.rollback()
             raise DBError(f"添加黑名单条目失败：{e!s}")
 
-    async def get_blacklist_entries(
+    def get_blacklist_entries(
         self, limit: int = 100, offset: int = 0
     ) -> list[BlacklistEntry]:
         """
@@ -85,21 +85,22 @@ class BlacklistMixin:
         if not self._db:
             raise DBError("数据库未初始化或连接已关闭")
         try:
-            async with self._db.execute(
+            cursor = self._db.execute(
                 "SELECT id, identifier, reason, updated_at FROM blacklist ORDER BY updated_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
-            ) as cursor:
-                rows = await cursor.fetchall()
+            )
+            rows = cursor.fetchall()
+            cursor.close()
             return [
                 BlacklistEntry(
                     id=row[0], identifier=row[1], reason=row[2], updated_at=row[3]
                 )
                 for row in rows
             ]
-        except aiosqlite.Error as e:
+        except sqlite3.Error as e:
             raise DBError(f"获取黑名单条目失败：{e!s}")
 
-    async def get_blacklist_entries_count(self) -> int:
+    def get_blacklist_entries_count(self) -> int:
         """
         获取黑名单条目的总数。
 
@@ -112,13 +113,14 @@ class BlacklistMixin:
         if not self._db:
             raise DBError("数据库未初始化或连接已关闭")
         try:
-            async with self._db.execute("SELECT COUNT(*) FROM blacklist") as cursor:
-                result = await cursor.fetchone()
+            cursor = self._db.execute("SELECT COUNT(*) FROM blacklist")
+            result = cursor.fetchone()
+            cursor.close()
             return result[0] if result else 0
-        except aiosqlite.Error as e:
+        except sqlite3.Error as e:
             raise DBError(f"获取黑名单条目总数失败：{e!s}")
 
-    async def search_blacklist(
+    def search_blacklist(
         self, search_term: str, limit: int = 100, offset: int = 0
     ) -> list[BlacklistEntry]:
         """
@@ -139,21 +141,22 @@ class BlacklistMixin:
             raise DBError("数据库未初始化或连接已关闭")
         search_pattern = f"%{search_term}%"
         try:
-            async with self._db.execute(
+            cursor = self._db.execute(
                 "SELECT id, identifier, reason, updated_at FROM blacklist WHERE identifier LIKE ? OR reason LIKE ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
                 (search_pattern, search_pattern, limit, offset),
-            ) as cursor:
-                rows = await cursor.fetchall()
+            )
+            rows = cursor.fetchall()
+            cursor.close()
             return [
                 BlacklistEntry(
                     id=row[0], identifier=row[1], reason=row[2], updated_at=row[3]
                 )
                 for row in rows
             ]
-        except aiosqlite.Error as e:
+        except sqlite3.Error as e:
             raise DBError(f"搜索黑名单条目失败：{e!s}")
 
-    async def delete_blacklist_entry(self, entry_id: str) -> bool:
+    def delete_blacklist_entry(self, entry_id: str) -> bool:
         """
         删除一个黑名单条目。
 
@@ -169,11 +172,12 @@ class BlacklistMixin:
         if not self._db:
             raise DBError("数据库未初始化或连接已关闭")
         try:
-            async with self._db.cursor() as cursor:
-                await cursor.execute("DELETE FROM blacklist WHERE id = ?", (entry_id,))
-                deleted = cursor.rowcount > 0
-                await self._db.commit()
-                return deleted
-        except aiosqlite.Error as e:
-            await self._db.rollback()
+            cursor = self._db.cursor()
+            cursor.execute("DELETE FROM blacklist WHERE id = ?", (entry_id,))
+            deleted = cursor.rowcount > 0
+            self._db.commit()
+            cursor.close()
+            return deleted
+        except sqlite3.Error as e:
+            self._db.rollback()
             raise DBError(f"删除黑名单条目失败：{e!s}")

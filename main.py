@@ -35,55 +35,50 @@ class AIOCensor(Star):
         self.db_mgr = DBManager(os.path.join(data_path, "censor.db"))
 
     async def initialize(self):
-        """初始化组件"""
         logger.debug("初始化 AIOCensor 组件")
-        try:
-            # 生成 Web UI 密钥（如果未设置）
-            if not self.config["webui"].get("secret"):
-                self.config["webui"]["secret"] = secrets.token_urlsafe(32)
-                self.config.save_config()
+        # 生成 Web UI 密钥（如果未设置）
+        if not self.config["webui"].get("secret"):
+            self.config["webui"]["secret"] = secrets.token_urlsafe(32)
+            self.config.save_config()
 
-            # 初始化数据库和审查器
-            await self.db_mgr.initialize()
-            await self._update_censors()
+        # 初始化数据库和审查器
+        self.db_mgr.initialize()
 
-            # 设置定时任务，每 5 分钟更新审查器数据
-            self.scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
-            self.scheduler.add_job(
-                self._update_censors,
-                "interval",
-                minutes=5,
-                id="update_censors",
-                misfire_grace_time=60,
+        await self._update_censors()
+
+        # 设置定时任务，每 5 分钟更新审查器数据
+        self.scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
+        self.scheduler.add_job(
+            self._update_censors,
+            "interval",
+            minutes=5,
+            id="update_censors",
+            misfire_grace_time=60,
             )
-            self.scheduler.start()
-            # 启动 Web UI 服务
+        self.scheduler.start()
+        # 启动 Web UI 服务
 
-            self.web_ui_process = Process(
-                target=run_server,
-                args=(
-                    self.config["webui"]["secret"],
-                    self.config["webui"]["password"],
-                    self.config["webui"].get("host", "0.0.0.0"),
-                    self.config["webui"].get("port", 9966),
-                ),
-                daemon=True,
-            )
-            self.web_ui_process.start()
-
-        except Exception as e:
-            logger.error(f"初始化失败: {e}")
-            raise
+        self.web_ui_process = Process(
+            target=run_server,
+            args=(
+                self.config["webui"]["secret"],
+                self.config["webui"]["password"],
+                self.config["webui"].get("host", "0.0.0.0"),
+                self.config["webui"].get("port", 9966),
+            ),
+            daemon=True,
+        )
+        self.web_ui_process.start()
 
     async def _update_censors(self):
         """定期更新审查器数据"""
         try:
-            black_list = await self.db_mgr.get_blacklist_entries()
+            black_list = self.db_mgr.get_blacklist_entries()
             await self.censor_flow.userid_censor.build(
                 {entry.identifier for entry in black_list}
             )
             if hasattr(self.censor_flow.text_censor, "build"):
-                sensitive_words = await self.db_mgr.get_sensitive_words()
+                sensitive_words = self.db_mgr.get_sensitive_words()
                 await self.censor_flow.text_censor.build(
                     {entry.word for entry in sensitive_words}
                 )
@@ -228,25 +223,15 @@ class AIOCensor(Star):
     async def terminate(self):
         logger.debug("开始清理 AIOCensor 资源...")
         try:
-            logger.debug("开始关闭 censor_flow...")
             await self.censor_flow.close()
-            logger.debug("censor_flow 已关闭")
-            logger.debug("开始关闭 db_mgr...")
             await self.db_mgr.close()
-            logger.debug("db_mgr 已关闭")
             if self.scheduler:
-                logger.debug("开始关闭 scheduler...")
                 self.scheduler.shutdown()
-                logger.debug("scheduler 已关闭")
             if self.web_ui_process:
-                logger.debug("开始终止 web_ui_process...")
                 self.web_ui_process.terminate()
                 self.web_ui_process.join(5)
                 if self.web_ui_process.is_alive():
                     self.web_ui_process.kill()
                     logger.warning("web_ui_process 未在 5 秒内退出，强制终止")
-                else:
-                    logger.debug("web_ui_process 已终止")
-            logger.debug("AIOCensor 资源已清理")
         except Exception as e:
             logger.error(f"资源清理失败: {e}")

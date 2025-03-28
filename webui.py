@@ -321,17 +321,12 @@ class WebUIServer:
                 offset = int(args.get("offset", 0))
                 search = args.get("search")
 
-                async with self._db_mgr:
-                    if search:
-                        entries = await self._db_mgr.get_blacklist_entries(
-                            search, limit=limit, offset=offset
-                        )
-                        total = await self._db_mgr.get_blacklist_entries_count()
-                    else:
-                        entries = await self._db_mgr.get_blacklist_entries(
-                            limit=limit, offset=offset
-                        )
-                        total = await self._db_mgr.get_blacklist_entries_count()
+                if search:
+                    entries = self._db_mgr.search_blacklist(search, limit=limit, offset=offset)
+                    total = len(self._db_mgr.search_blacklist(search))
+                else:
+                    entries = self._db_mgr.get_blacklist(limit=limit, offset=offset)
+                    total = self._db_mgr.get_blacklist_count()
 
                 return await format_response(
                     data={
@@ -372,19 +367,18 @@ class WebUIServer:
                         message="缺少必要参数", status_code=400
                     )
 
-                async with self._db_mgr:
-                    existing = await self._db_mgr.search_blacklist(user_id)
-                    if any(entry.identifier == user_id for entry in existing):
-                        return await format_response(
-                            message="用户已在黑名单中", status_code=409
-                        )
-
-                    record_id = await self._db_mgr.add_blacklist_entry(user_id, reason)
+                existing = self._db_mgr.search_blacklist(user_id)
+                if any(entry.identifier == user_id for entry in existing):
                     return await format_response(
-                        data={"id": record_id, "user": user_id, "reason": reason},
-                        message="已添加至黑名单",
-                        status_code=201,
+                        message="用户已在黑名单中", status_code=409
                     )
+
+                record_id = self._db_mgr.add_blacklist_entry(user_id, reason)
+                return await format_response(
+                    data={"id": record_id, "user": user_id, "reason": reason},
+                    message="已添加至黑名单",
+                    status_code=201,
+                )
             except Exception as e:
                 logger.error(f"添加黑名单失败: {e!s}")
                 return await format_response(message="添加黑名单失败", status_code=500)
@@ -395,14 +389,13 @@ class WebUIServer:
             """从黑名单中删除条目"""
             try:
                 record_id = clean_input(record_id)
-                async with self._db_mgr:
-                    if not await self._db_mgr.delete_blacklist_entry(record_id):
-                        return await format_response(
-                            message="黑名单记录不存在", status_code=404
-                        )
+                if not self._db_mgr.delete_blacklist_entry(record_id):
                     return await format_response(
-                        data={"record_id": record_id}, message="已移出黑名单"
+                        message="黑名单记录不存在", status_code=404
                     )
+                return await format_response(
+                    data={"record_id": record_id}, message="已移出黑名单"
+                )
             except Exception as e:
                 logger.error(f"移除黑名单失败: {e!s}", exc_info=True)
                 return await format_response(message="移除黑名单失败", status_code=500)
@@ -417,17 +410,16 @@ class WebUIServer:
                 offset = int(args.get("offset", 0))
                 search = args.get("search")
 
-                async with self._db_mgr:
-                    if search:
-                        words = await self._db_mgr.get_sensitive_words(
-                            search, limit=limit, offset=offset
-                        )
-                        total = len(await self._db_mgr.get_sensitive_words(search))
-                    else:
-                        words = await self._db_mgr.get_sensitive_words(
-                            limit=limit, offset=offset
-                        )
-                        total = await self._db_mgr.get_sensitive_words_count()
+                if search:
+                    words = self._db_mgr.get_sensitive_words(
+                        search, limit=limit, offset=offset
+                    )
+                    total = len(self._db_mgr.get_sensitive_words(search))
+                else:
+                    words = self._db_mgr.get_sensitive_words(
+                        limit=limit, offset=offset
+                    )
+                    total = self._db_mgr.get_sensitive_words_count()
 
                 return await format_response(
                     data={
@@ -465,19 +457,18 @@ class WebUIServer:
                         message="缺少敏感词内容", status_code=400
                     )
 
-                async with self._db_mgr:
-                    existing = await self._db_mgr.get_sensitive_words(word)
-                    if any(entry.word == word for entry in existing):
-                        return await format_response(
-                            message="敏感词已存在", status_code=409
-                        )
-
-                    word_id = await self._db_mgr.add_sensitive_word(word)
+                existing = self._db_mgr.get_sensitive_words(word)
+                if any(entry.word == word for entry in existing):
                     return await format_response(
-                        data={"id": word_id, "word": word},
-                        message="敏感词添加成功",
-                        status_code=201,
+                        message="敏感词已存在", status_code=409
                     )
+
+                word_id = self._db_mgr.add_sensitive_word(word)
+                return await format_response(
+                    data={"id": word_id, "word": word},
+                    message="敏感词添加成功",
+                    status_code=201,
+                )
             except Exception as e:
                 logger.error(f"添加敏感词失败: {e!s}")
                 return await format_response(message="添加敏感词失败", status_code=500)
@@ -488,14 +479,13 @@ class WebUIServer:
             """删除敏感词"""
             try:
                 word_id = clean_input(word_id)
-                async with self._db_mgr:
-                    if not await self._db_mgr.delete_sensitive_word(word_id):
-                        return await format_response(
-                            message="敏感词不存在", status_code=404
-                        )
+                if not self._db_mgr.delete_sensitive_word(word_id):
                     return await format_response(
-                        data={"word_id": word_id}, message="敏感词删除成功"
+                        message="敏感词不存在", status_code=404
                     )
+                return await format_response(
+                    data={"word_id": word_id}, message="敏感词删除成功"
+                )
             except Exception as e:
                 logger.error(f"删除敏感词失败: {e!s}")
                 return await format_response(message="删除敏感词失败", status_code=500)

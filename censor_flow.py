@@ -173,6 +173,9 @@ class CensorFlow(AbstractAsyncContextManager):
         if not self._image_censor:
             raise RuntimeError("图片审核未启用或未成功初始化，请检查配置")
 
+        if "multimedia.nt.qq.com.cn" in content:
+            content = content.replace("https://", "http://")
+
         msg = Message(content, source)
 
         img_b64_a = None

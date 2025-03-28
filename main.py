@@ -13,13 +13,13 @@ from astrbot.core.provider.entites import LLMResponse
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
 from .censor_flow import CensorFlow  # type:ignore
-from .common import RiskLevel, CensorResult, admin_check, dispose_msg  # type:ignore
+from .common import CensorResult, RiskLevel, admin_check, dispose_msg  # type:ignore
 from .db import DBManager  # type:ignore
 from .webui import run_server  # type:ignore
 
 
 @register(
-    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.0.6"
+    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.0.7"
 )
 class AIOCensor(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -35,54 +35,50 @@ class AIOCensor(Star):
         self.db_mgr = DBManager(os.path.join(data_path, "censor.db"))
 
     async def initialize(self):
-        """初始化组件"""
         logger.debug("初始化 AIOCensor 组件")
-        try:
-            # 生成 Web UI 密钥（如果未设置）
-            if not self.config["webui"].get("secret"):
-                self.config["webui"]["secret"] = secrets.token_urlsafe(32)
-                self.config.save_config()
+        # 生成 Web UI 密钥（如果未设置）
+        if not self.config["webui"].get("secret"):
+            self.config["webui"]["secret"] = secrets.token_urlsafe(32)
+            self.config.save_config()
 
-            # 初始化数据库和审查器
-            await self.db_mgr.initialize()
-            await self._update_censors()
+        # 初始化数据库和审查器
+        self.db_mgr.initialize()
 
-            # 设置定时任务，每 5 分钟更新审查器数据
-            self.scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
-            self.scheduler.add_job(
-                self._update_censors,
-                "interval",
-                minutes=5,
-                id="update_censors",
-                misfire_grace_time=60,
-            )
-            self.scheduler.start()
+        await self._update_censors()
 
-            # 启动 Web UI 服务
-            self.web_ui_process = Process(
-                target=run_server,
-                args=(
-                    self.config["webui"]["secret"],
-                    self.config["webui"]["password"],
-                    self.config["webui"].get("host", "0.0.0.0"),
-                    self.config["webui"].get("port", 9966),
-                ),
-                daemon=True,
-            )
-            self.web_ui_process.start()
-        except Exception as e:
-            logger.error(f"初始化失败: {e}")
-            raise
+        # 设置定时任务，每 5 分钟更新审查器数据
+        self.scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
+        self.scheduler.add_job(
+            self._update_censors,
+            "interval",
+            minutes=5,
+            id="update_censors",
+            misfire_grace_time=60,
+        )
+        self.scheduler.start()
+
+        # 启动 Web UI 服务
+        self.web_ui_process = Process(
+            target=run_server,
+            args=(
+                self.config["webui"]["secret"],
+                self.config["webui"]["password"],
+                self.config["webui"].get("host", "0.0.0.0"),
+                self.config["webui"].get("port", 9966),
+            ),
+            daemon=True,
+        )
+        self.web_ui_process.start()
 
     async def _update_censors(self):
         """定期更新审查器数据"""
         try:
-            black_list = await self.db_mgr.get_blacklist_entries()
+            black_list = self.db_mgr.get_blacklist_entries()
             await self.censor_flow.userid_censor.build(
                 {entry.identifier for entry in black_list}
             )
             if hasattr(self.censor_flow.text_censor, "build"):
-                sensitive_words = await self.db_mgr.get_sensitive_words()
+                sensitive_words = self.db_mgr.get_sensitive_words()
                 await self.censor_flow.text_censor.build(
                     {entry.word for entry in sensitive_words}
                 )
@@ -152,7 +148,7 @@ class AIOCensor(Star):
 
                 if res and res.risk_level != RiskLevel.Pass:
                     res.extra = {"user_id_str": event.get_sender_id()}
-                    await self.db_mgr.add_audit_log(res)
+                    self.db_mgr.add_audit_log(res)
 
                     if res.risk_level == RiskLevel.Block:
                         if (
@@ -175,7 +171,7 @@ class AIOCensor(Star):
                 event.get_sender_id(), event.unified_msg_origin
             )
             if res.risk_level == RiskLevel.Block:
-                await self.db_mgr.add_audit_log(res)
+                self.db_mgr.add_audit_log(res)
                 event.stop_event()
                 return
         if (
@@ -211,7 +207,7 @@ class AIOCensor(Star):
                 )
                 if res and res.risk_level != RiskLevel.Pass:
                     res.extra = {"user_id_str": event.get_sender_id()}
-                    await self.db_mgr.add_audit_log(res)
+                    self.db_mgr.add_audit_log(res)
                     if res.risk_level == RiskLevel.Block:
                         if (
                             event.get_platform_name() == "aiocqhttp"
@@ -225,15 +221,17 @@ class AIOCensor(Star):
                 await self.handle_message(event, response.result_chain.chain)
 
     async def terminate(self):
-        """清理资源"""
+        logger.debug("开始清理 AIOCensor 资源...")
         try:
+            self.db_mgr.close()
+            await self.censor_flow.close()
             if self.scheduler:
                 self.scheduler.shutdown()
             if self.web_ui_process:
                 self.web_ui_process.terminate()
                 self.web_ui_process.join(5)
-            await self.censor_flow.close()
-            await self.db_mgr.close()
-            logger.debug("AIOCensor 资源已清理")
+                if self.web_ui_process.is_alive():
+                    self.web_ui_process.kill()
+                    logger.warning("web_ui_process 未在 5 秒内退出，强制终止")
         except Exception as e:
             logger.error(f"资源清理失败: {e}")

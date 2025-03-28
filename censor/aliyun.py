@@ -3,14 +3,12 @@ import base64
 import hashlib
 import hmac
 import json
-import ssl
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote_plus
 
 import aiohttp
-import certifi
 
 from ..common.interfaces import CensorBase  # type: ignore
 from ..common.types import CensorError, RiskLevel  # type: ignore
@@ -115,14 +113,7 @@ class AliyunCensor(CensorBase):
     def __init__(self, config: dict[str, Any]) -> None:
         self._url: str = "https://green-cip.cn-shanghai.aliyuncs.com"
         self._auth = AliyunAuth(config["key_id"], config["key_secret"])
-
-        # 创建SSL上下文，使用certifi提供的证书
-        ssl_context = ssl.create_default_context(cafile=certifi.where())
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
-
-        self._session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=15), connector=connector
-        )
+        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
         self._semaphore = asyncio.Semaphore(80)
 
     async def __aenter__(self) -> "AliyunCensor":

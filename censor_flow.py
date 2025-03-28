@@ -3,12 +3,11 @@ import os
 <<<<<<< HEAD
 import ssl
 import certifi
-=======
->>>>>>> parent of f07052b (✨ feat(censor): add certifi for SSL context)
 from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 import aiohttp
+import certifi
 
 from astrbot.api import AstrBotConfig, logger
 
@@ -186,14 +185,18 @@ class CensorFlow(AbstractAsyncContextManager):
             try:
                 async def down_img(url: str) -> bytes:
                     proxy = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
-<<<<<<< HEAD
+                    # 创建SSL上下文，使用certifi提供的证书
+                    ssl_context = ssl.create_default_context(cafile=certifi.where())
                     if "multimedia.nt.qq.com.cn" in content:
-                        # 对QQ图片链接单独处理，直接禁用验证
-                        connector = aiohttp.TCPConnector(verify_ssl=False)
-                    else:
-                        ssl_context = ssl.create_default_context(cafile=certifi.where())
-                        connector = aiohttp.TCPConnector(ssl=ssl_context)
-
+                        # 参照 https://gist.github.com/pk5ls20/a2ded67daf09b38458d7d56e4c30b53f
+                        # 对QQ图片链接单独处理
+                        ssl_context.set_ciphers("DEFAULT")
+                        ssl_context.options |= ssl.OP_NO_SSLv2
+                        ssl_context.options |= ssl.OP_NO_SSLv3
+                        ssl_context.options |= ssl.OP_NO_TLSv1
+                        ssl_context.options |= ssl.OP_NO_TLSv1_1
+                        ssl_context.options |= ssl.OP_NO_COMPRESSION
+                    connector = aiohttp.TCPConnector(ssl=ssl_context)
                     async with aiohttp.ClientSession(
                         trust_env=True, connector=connector
                     ) as session:
@@ -214,9 +217,6 @@ class CensorFlow(AbstractAsyncContextManager):
                 logger.error(f"下载图片时发生错误: {e!s}")
         # 首次尝试使用原始内容进行审核
         try:
-            # 如果是QQ的这个域名，换成http进行提交
-            if "multimedia.nt.qq.com.cn" in content:
-                content = content.replace("https://", "http://")
             risk, reasons = await self._image_censor.detect_image(content)
             return CensorResult(msg, risk, reasons)
         except Exception as e:

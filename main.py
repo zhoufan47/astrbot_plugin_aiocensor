@@ -13,7 +13,7 @@ from astrbot.core.provider.entites import LLMResponse
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
 from .censor_flow import CensorFlow  # type:ignore
-from .common import RiskLevel, CensorResult, admin_check, dispose_msg  # type:ignore
+from .common import CensorResult, RiskLevel, admin_check, dispose_msg  # type:ignore
 from .db import DBManager  # type:ignore
 from .webui import run_server  # type:ignore
 
@@ -54,10 +54,10 @@ class AIOCensor(Star):
             minutes=5,
             id="update_censors",
             misfire_grace_time=60,
-            )
+        )
         self.scheduler.start()
-        # 启动 Web UI 服务
 
+        # 启动 Web UI 服务
         self.web_ui_process = Process(
             target=run_server,
             args=(
@@ -148,7 +148,7 @@ class AIOCensor(Star):
 
                 if res and res.risk_level != RiskLevel.Pass:
                     res.extra = {"user_id_str": event.get_sender_id()}
-                    await self.db_mgr.add_audit_log(res)
+                    self.db_mgr.add_audit_log(res)
 
                     if res.risk_level == RiskLevel.Block:
                         if (
@@ -171,7 +171,7 @@ class AIOCensor(Star):
                 event.get_sender_id(), event.unified_msg_origin
             )
             if res.risk_level == RiskLevel.Block:
-                await self.db_mgr.add_audit_log(res)
+                self.db_mgr.add_audit_log(res)
                 event.stop_event()
                 return
         if (
@@ -207,7 +207,7 @@ class AIOCensor(Star):
                 )
                 if res and res.risk_level != RiskLevel.Pass:
                     res.extra = {"user_id_str": event.get_sender_id()}
-                    await self.db_mgr.add_audit_log(res)
+                    self.db_mgr.add_audit_log(res)
                     if res.risk_level == RiskLevel.Block:
                         if (
                             event.get_platform_name() == "aiocqhttp"
@@ -223,8 +223,8 @@ class AIOCensor(Star):
     async def terminate(self):
         logger.debug("开始清理 AIOCensor 资源...")
         try:
+            self.db_mgr.close()
             await self.censor_flow.close()
-            await self.db_mgr.close()
             if self.scheduler:
                 self.scheduler.shutdown()
             if self.web_ui_process:

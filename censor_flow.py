@@ -1,9 +1,11 @@
 import base64
 import os
+import ssl
 from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 import aiohttp
+import certifi
 
 from astrbot.api import AstrBotConfig, logger
 
@@ -179,9 +181,15 @@ class CensorFlow(AbstractAsyncContextManager):
         img_b64_b = None
         if content.startswith("http"):
             try:
+
                 async def down_img(url: str) -> bytes:
                     proxy = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
-                    async with aiohttp.ClientSession(trust_env=True) as session:
+                    # 创建SSL上下文，使用certifi提供的证书
+                    ssl_context = ssl.create_default_context(cafile=certifi.where())
+                    connector = aiohttp.TCPConnector(ssl=ssl_context)
+                    async with aiohttp.ClientSession(
+                        trust_env=True, connector=connector
+                    ) as session:
                         async with session.get(url, proxy=proxy) as resp:
                             return await resp.read()
 

@@ -57,8 +57,8 @@ class AIOCensor(Star):
                 misfire_grace_time=60,
             )
             self.scheduler.start()
-
             # 启动 Web UI 服务
+
             self.web_ui_process = Process(
                 target=run_server,
                 args=(
@@ -70,6 +70,7 @@ class AIOCensor(Star):
                 daemon=True,
             )
             self.web_ui_process.start()
+
         except Exception as e:
             logger.error(f"初始化失败: {e}")
             raise
@@ -225,15 +226,27 @@ class AIOCensor(Star):
                 await self.handle_message(event, response.result_chain.chain)
 
     async def terminate(self):
-        """清理资源"""
+        logger.debug("开始清理 AIOCensor 资源...")
         try:
+            logger.debug("开始关闭 censor_flow...")
+            await self.censor_flow.close()
+            logger.debug("censor_flow 已关闭")
+            logger.debug("开始关闭 db_mgr...")
+            await self.db_mgr.close()
+            logger.debug("db_mgr 已关闭")
             if self.scheduler:
+                logger.debug("开始关闭 scheduler...")
                 self.scheduler.shutdown()
+                logger.debug("scheduler 已关闭")
             if self.web_ui_process:
+                logger.debug("开始终止 web_ui_process...")
                 self.web_ui_process.terminate()
                 self.web_ui_process.join(5)
-            await self.censor_flow.close()
-            await self.db_mgr.close()
+                if self.web_ui_process.is_alive():
+                    self.web_ui_process.kill()
+                    logger.warning("web_ui_process 未在 5 秒内退出，强制终止")
+                else:
+                    logger.debug("web_ui_process 已终止")
             logger.debug("AIOCensor 资源已清理")
         except Exception as e:
             logger.error(f"资源清理失败: {e}")

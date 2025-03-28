@@ -40,27 +40,14 @@ class WebUIServer:
             message: str = "",
             status_code: int = 200,
         ) -> tuple[Response, int]:
-            """格式化API响应
-
-            Args:
-                data: 响应数据
-                message: 响应消息
-                status_code: HTTP状态码
-
-            Returns:
-                格式化的JSON响应和状态码
-            """
+            """格式化API响应"""
             response = {"success": status_code < 400, "message": message}
             if data is not None:
                 response.update(data)
             return jsonify(response), status_code
 
         def generate_tokens() -> tuple[str, str]:
-            """生成JWT访问令牌和刷新令牌
-
-            Returns:
-                访问令牌和刷新令牌
-            """
+            """生成JWT访问令牌和刷新令牌"""
             access_token = jwt.encode(
                 {
                     "role": "admin",
@@ -80,14 +67,7 @@ class WebUIServer:
             return access_token, refresh_token
 
         def verify_token(token: str) -> dict[str, Any] | None:
-            """验证JWT令牌
-
-            Args:
-                token: JWT令牌字符串
-
-            Returns:
-                解码后的令牌载荷，如果令牌无效则返回None
-            """
+            """验证JWT令牌"""
             try:
                 payload = jwt.decode(token, self._secret_key, algorithms=["HS256"])
                 return payload
@@ -97,14 +77,7 @@ class WebUIServer:
                 return None
 
         def clean_input(text: str) -> str:
-            """预处理输入文本，去除空格
-
-            Args:
-                text: 输入文本
-
-            Returns:
-                处理后的文本
-            """
+            """预处理输入文本，去除空格"""
             if text:
                 return text.strip()
             return ""
@@ -207,19 +180,18 @@ class WebUIServer:
                 offset = int(args.get("offset", 0))
                 search = args.get("search")
 
-                async with self._db_mgr:
-                    if search:
-                        logs = await self._db_mgr.get_audit_logs(
-                            search_term=search,
-                            limit=limit,
-                            offset=offset,
-                        )
-                        total = await self._db_mgr.get_audit_logs_count()
-                    else:
-                        logs = await self._db_mgr.get_audit_logs(
-                            limit=limit, offset=offset
-                        )
-                        total = await self._db_mgr.get_audit_logs_count()
+                if search:
+                    logs = self._db_mgr.get_audit_logs(
+                        search_term=search,
+                        limit=limit,
+                        offset=offset,
+                    )
+                    total = self._db_mgr.get_audit_logs_count()
+                else:
+                    logs = self._db_mgr.get_audit_logs(
+                        limit=limit, offset=offset
+                    )
+                    total = self._db_mgr.get_audit_logs_count()
 
                 return await format_response(
                     data={
@@ -257,29 +229,28 @@ class WebUIServer:
                 actions = data.get("actions", [])
                 for action in actions:
                     if action == "block":
-                        async with self._db_mgr:
-                            log = await self._db_mgr.get_audit_log(log_id)
-                            if not log:
-                                return await format_response(
-                                    message="找不到指定的审核日志", status_code=404
-                                )
+                        log = self._db_mgr.get_audit_log(log_id)
+                        if not log:
+                            return await format_response(
+                                message="找不到指定的审核日志", status_code=404
+                            )
 
-                            if (
-                                not log.result.extra
-                                or "user_id_str" not in log.result.extra
-                            ):
-                                return await format_response(
-                                    message="审核日志中缺少用户ID信息", status_code=400
-                                )
+                        if (
+                            not log.result.extra
+                            or "user_id_str" not in log.result.extra
+                        ):
+                            return await format_response(
+                                message="审核日志中缺少用户ID信息", status_code=400
+                            )
 
-                            user_id = log.result.extra["user_id_str"]
-                            reason = f"根据审核日志 {log_id} 添加"
+                        user_id = log.result.extra["user_id_str"]
+                        reason = f"根据审核日志 {log_id} 添加"
 
-                            existing = await self._db_mgr.search_blacklist(user_id)
-                            if any(entry.identifier == user_id for entry in existing):
-                                continue
+                        existing = self._db_mgr.search_blacklist(user_id)
+                        if any(entry.identifier == user_id for entry in existing):
+                            continue
 
-                            await self._db_mgr.add_blacklist_entry(user_id, reason)
+                        self._db_mgr.add_blacklist_entry(user_id, reason)
                     elif action == "dispose":
                         return await format_response(
                             message="功能未实现", status_code=400 #TODO:实现控制台处置
@@ -299,14 +270,13 @@ class WebUIServer:
             """忽略（删除）审计日志"""
             try:
                 log_id = clean_input(log_id)
-                async with self._db_mgr:
-                    if not await self._db_mgr.delete_audit_log(log_id):
-                        return await format_response(
-                            message="日志不存在", status_code=404
-                        )
+                if not self._db_mgr.delete_audit_log(log_id):
                     return await format_response(
-                        message="已删除日志", data={"log_id": log_id}
+                        message="日志不存在", status_code=404
                     )
+                return await format_response(
+                    message="已删除日志", data={"log_id": log_id}
+                )
             except Exception as e:
                 logger.error(f"删除日志失败 {log_id}: {e!s}", exc_info=True)
                 return await format_response(message="删除日志失败", status_code=500)
@@ -325,8 +295,8 @@ class WebUIServer:
                     entries = self._db_mgr.search_blacklist(search, limit=limit, offset=offset)
                     total = len(self._db_mgr.search_blacklist(search))
                 else:
-                    entries = self._db_mgr.get_blacklist(limit=limit, offset=offset)
-                    total = self._db_mgr.get_blacklist_count()
+                    entries = self._db_mgr.get_blacklist_entries(limit=limit, offset=offset)
+                    total = self._db_mgr.get_blacklist_entries_count()
 
                 return await format_response(
                     data={

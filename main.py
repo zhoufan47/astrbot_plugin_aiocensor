@@ -178,7 +178,11 @@ class AIOCensor(Star):
                 await self.db_mgr.add_audit_log(res)
                 event.stop_event()
                 return
-        if self.config.get("enable_all_input_censor"):
+        if (
+            self.config.get("enable_all_input_censor")
+            or self.config.get("enable_input_censor")
+            and event.is_at_or_wake_command
+        ):
             await self.handle_message(event, event.message_obj.message)
 
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)

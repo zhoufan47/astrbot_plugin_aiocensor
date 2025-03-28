@@ -1,7 +1,10 @@
 import base64
 import os
+<<<<<<< HEAD
 import ssl
 import certifi
+=======
+>>>>>>> parent of f07052b (✨ feat(censor): add certifi for SSL context)
 from contextlib import AbstractAsyncContextManager
 from typing import Any
 
@@ -181,9 +184,9 @@ class CensorFlow(AbstractAsyncContextManager):
         img_b64_b = None
         if content.startswith("http"):
             try:
-
                 async def down_img(url: str) -> bytes:
                     proxy = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
+<<<<<<< HEAD
                     if "multimedia.nt.qq.com.cn" in content:
                         # 对QQ图片链接单独处理，直接禁用验证
                         connector = aiohttp.TCPConnector(verify_ssl=False)
@@ -194,6 +197,9 @@ class CensorFlow(AbstractAsyncContextManager):
                     async with aiohttp.ClientSession(
                         trust_env=True, connector=connector
                     ) as session:
+=======
+                    async with aiohttp.ClientSession(trust_env=True) as session:
+>>>>>>> parent of f07052b (✨ feat(censor): add certifi for SSL context)
                         async with session.get(url, proxy=proxy) as resp:
                             return await resp.read()
 

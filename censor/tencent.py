@@ -3,11 +3,13 @@ import base64
 import hashlib
 import hmac
 import json
+import ssl
 import time
 from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
+import certifi
 
 from ..common.interfaces import CensorBase  # type: ignore
 from ..common.types import CensorError, RiskLevel  # type: ignore
@@ -168,7 +170,14 @@ class TencentCensor(CensorBase):
         self._text_url = "https://tms.tencentcloudapi.com"
         self._image_url = "https://ims.tencentcloudapi.com"
         self._auth = TencentAuth(config["secret_id"], config["secret_key"])
-        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
+
+        # 创建SSL上下文，使用certifi提供的证书
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+
+        self._session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=15), connector=connector
+        )
         self._semaphore = asyncio.Semaphore(80)
 
     async def __aenter__(self) -> "TencentCensor":

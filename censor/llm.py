@@ -1,7 +1,9 @@
 import asyncio
+import ssl
 from typing import Any
 
 import aiohttp
+import certifi
 
 from ..common.interfaces import CensorBase  # type: ignore
 from ..common.types import CensorError, RiskLevel  # type: ignore
@@ -15,7 +17,14 @@ class LLMCensor(CensorBase):
         self._model = config.get("model")
         self._base_url = config.get("base_url")
         self._api_key = config.get("api_key")
-        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
+
+        # 创建SSL上下文，使用certifi提供的证书
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+
+        self._session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=15), connector=connector
+        )
         self._semaphore = asyncio.Semaphore(80)
 
     async def __aenter__(self) -> "LLMCensor":

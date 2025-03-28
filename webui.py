@@ -26,6 +26,7 @@ class WebUIServer:
         if not os.path.exists(data_path):
             os.makedirs(data_path)
         self._db_mgr = DBManager(os.path.join(data_path, "censor.db"))
+        self._db_mgr.initialize()
         self._app = Quart(__name__, static_folder="static", static_url_path="")
         self._password = password
         self._secret_key = secret_key

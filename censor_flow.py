@@ -1,5 +1,3 @@
-import asyncio
-import atexit
 import base64
 import os
 from contextlib import AbstractAsyncContextManager
@@ -25,7 +23,6 @@ class CensorFlow(AbstractAsyncContextManager):
         "_image_censor",
         "_userid_censor",
         "_config",
-        "_closed",
     )
 
     def __init__(self, config: AstrBotConfig) -> None:
@@ -36,7 +33,6 @@ class CensorFlow(AbstractAsyncContextManager):
             config: AstrBotConfig 实例，包含审核相关的配置信息
         """
         self._config = config
-        self._closed = False
 
         # 获取文本和图片审核的提供商配置
         text_provider = config.get("text_censor_provider", "")
@@ -72,9 +68,6 @@ class CensorFlow(AbstractAsyncContextManager):
         # 初始化用户ID审核器
         self._userid_censor = LocalCensor({"use_logic": False})
 
-        # fallback
-        atexit.register(self._sync_close)
-
     def _create_censor(
         self, provider: str, configs: dict[str, dict[str, Any]]
     ) -> CensorBase | None:
@@ -104,7 +97,7 @@ class CensorFlow(AbstractAsyncContextManager):
                 logger.error(f"未知的审核提供商: {provider}")
                 return None
         except Exception as e:
-            logger.error(f"初始化审核提供商 '{provider}' 时出错: {e!s}")
+            logger.error(f"初始化审核提供商 '{provider}' 时出错: {e}")
             return None
 
     @property
@@ -189,7 +182,6 @@ class CensorFlow(AbstractAsyncContextManager):
         img_b64_b = None
         if content.startswith("http"):
             try:
-
                 async def down_img(url: str) -> bytes:
                     proxy = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
                     async with aiohttp.ClientSession() as session:
@@ -261,26 +253,3 @@ class CensorFlow(AbstractAsyncContextManager):
                 await self._userid_censor.close()
         except Exception as e:
             logger.error(f"关闭时出错: {e!s}")
-
-    def _sync_close(self) -> None:
-        """同步关闭资源
-
-        用于在程序退出时确保资源被正确关闭
-        """
-        if self._closed:
-            return
-        try:
-            if asyncio.get_event_loop().is_running():
-                asyncio.create_task(self.close())
-            else:
-                asyncio.get_event_loop().run_until_complete(self.close())
-        except RuntimeError:
-            logger.debug("事件循环不可用，创建新的事件循环进行清理")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.close())
-            loop.close()
-        except Exception as e:
-            logger.error(f"同步关闭时出错: {e!s}")
-        finally:
-            self._closed = True

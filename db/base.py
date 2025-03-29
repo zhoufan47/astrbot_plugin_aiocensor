@@ -1,3 +1,4 @@
+import atexit
 import sqlite3
 
 from ..common.types import DBError  # type: ignore
@@ -15,7 +16,8 @@ class BaseDBMixin:
         """
         self._db_path: str = db_path
         self._db: sqlite3.Connection | None = None
-
+        # fallback
+        atexit.register(self.close)
 
     def __enter__(self) -> "BaseDBMixin":
         """
@@ -72,7 +74,7 @@ class BaseDBMixin:
 
     def close(self) -> None:
         """关闭数据库连接。"""
-        if self._db:
+        if self._db is not None:
             try:
                 self._db.execute("PRAGMA wal_checkpoint")
                 self._db.close()

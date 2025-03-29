@@ -16,6 +16,7 @@ class BaseDBMixin:
         self._db_path: str = db_path
         self._db: sqlite3.Connection | None = None
 
+
     def __enter__(self) -> "BaseDBMixin":
         """
         同步上下文管理器入口。
@@ -43,7 +44,12 @@ class BaseDBMixin:
             self._db = sqlite3.connect(self._db_path)
             self._db.execute("PRAGMA foreign_keys = ON")
             self._db.execute("PRAGMA journal_mode = WAL")
+            results = self._db.execute("PRAGMA integrity_check").fetchone()
+            for result in results:
+                if result != "ok":
+                    raise DBError(f"数据库完整性检查失败: {result[0]}")
             self._create_tables()
+
         except sqlite3.Error as e:
             if self._db:
                 self._db.close()
@@ -68,7 +74,9 @@ class BaseDBMixin:
         """关闭数据库连接。"""
         if self._db:
             try:
+                self._db.execute("PRAGMA wal_checkpoint")
                 self._db.close()
-                self._db = None
             except sqlite3.Error as e:
                 raise DBError(f"关闭数据库连接失败：{e!s}")
+            finally:
+                self._db = None

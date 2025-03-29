@@ -25,29 +25,28 @@ class AuditLogMixin:
         if not self._db:
             raise DBError("数据库未初始化")
         try:
-            self._db.execute("""
-            CREATE TABLE IF NOT EXISTS audit_logs (
-                id TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                source TEXT NOT NULL,
-                message_timestamp INTEGER NOT NULL,
-                risk_level INTEGER NOT NULL,
-                reason TEXT NOT NULL,
-                result_extra TEXT,
-                entry_extra TEXT
-            )""")
-            self._db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_logs_source ON audit_logs(source)"
-            )
-            self._db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_logs_time ON audit_logs(message_timestamp)"
-            )
-            self._db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_logs_risk ON audit_logs(risk_level)"
-            )
-            self._db.commit()
+            with self._db:
+                self._db.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    message_timestamp INTEGER NOT NULL,
+                    risk_level INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    result_extra TEXT,
+                    entry_extra TEXT
+                )""")
+                self._db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_logs_source ON audit_logs(source)"
+                )
+                self._db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_logs_time ON audit_logs(message_timestamp)"
+                )
+                self._db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_logs_risk ON audit_logs(risk_level)"
+                )
         except sqlite3.Error as e:
-            self._db.rollback()
             raise DBError(f"创建审计日志表失败: {e!s}")
 
     def add_audit_log(
@@ -72,28 +71,27 @@ class AuditLogMixin:
         entry_extra_str = json.dumps(extra) if extra else None
 
         try:
-            cursor = self._db.cursor()
-            cursor.execute(
-                """
-                INSERT INTO audit_logs
-                (id, content, source, message_timestamp, risk_level, reason, result_extra, entry_extra)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    log_id,
-                    result.message.content,
-                    result.message.source,
-                    result.message.timestamp,
-                    result.risk_level.value,
-                    reason_str,
-                    result_extra_str,
-                    entry_extra_str,
-                ),
-            )
-            self._db.commit()
-            return log_id
+            with self._db:
+                cursor = self._db.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO audit_logs
+                    (id, content, source, message_timestamp, risk_level, reason, result_extra, entry_extra)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        log_id,
+                        result.message.content,
+                        result.message.source,
+                        result.message.timestamp,
+                        result.risk_level.value,
+                        reason_str,
+                        result_extra_str,
+                        entry_extra_str,
+                    ),
+                )
+                return log_id
         except sqlite3.Error as e:
-            self._db.rollback()
             raise DBError(f"添加审计日志失败: {e!s}")
 
     def get_audit_logs_count(
@@ -135,9 +133,10 @@ class AuditLogMixin:
             query += " AND risk_level = ?"
             params.append(risk_level.value)
         try:
-            cursor = self._db.execute(query, params)
-            result = cursor.fetchone()
-            return result[0] if result else 0
+            with self._db:
+                cursor = self._db.execute(query, params)
+                result = cursor.fetchone()
+                return result[0] if result else 0
         except sqlite3.Error as e:
             raise DBError(f"获取审计日志总数失败：{e!s}")
 
@@ -189,9 +188,10 @@ class AuditLogMixin:
         query += " ORDER BY message_timestamp DESC, id DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         try:
-            cursor = self._db.execute(query, params)
-            rows = cursor.fetchall()
-            return [self._parse_audit_log(row) for row in rows]
+            with self._db:
+                cursor = self._db.execute(query, params)
+                rows = cursor.fetchall()
+                return [self._parse_audit_log(row) for row in rows]
         except sqlite3.Error as e:
             raise DBError(f"获取审计日志失败：{e!s}")
 
@@ -210,13 +210,12 @@ class AuditLogMixin:
         if not self._db:
             raise DBError("数据库未初始化或连接已关闭")
         try:
-            cursor = self._db.cursor()
-            cursor.execute("DELETE FROM audit_logs WHERE id = ?", (log_id,))
-            deleted = cursor.rowcount > 0
-            self._db.commit()
-            return deleted
+            with self._db:
+                cursor = self._db.cursor()
+                cursor.execute("DELETE FROM audit_logs WHERE id = ?", (log_id,))
+                deleted = cursor.rowcount > 0
+                return deleted
         except sqlite3.Error as e:
-            self._db.rollback()
             raise DBError(f"删除审计日志失败：{e!s}")
 
     def get_audit_log(self, log_id: str) -> AuditLogEntry | None:
@@ -235,15 +234,16 @@ class AuditLogMixin:
         if not self._db:
             raise DBError("数据库未初始化或连接已关闭")
         try:
-            cursor = self._db.execute(
-                """
-                SELECT id, content, source, message_timestamp, risk_level, reason, result_extra, entry_extra
-                FROM audit_logs WHERE id = ?
-                """,
-                (log_id,),
-            )
-            row = cursor.fetchone()
-            return self._parse_audit_log(row) if row else None
+            with self._db:
+                cursor = self._db.execute(
+                    """
+                    SELECT id, content, source, message_timestamp, risk_level, reason, result_extra, entry_extra
+                    FROM audit_logs WHERE id = ?
+                    """,
+                    (log_id,),
+                )
+                row = cursor.fetchone()
+                return self._parse_audit_log(row) if row else None
         except sqlite3.Error as e:
             raise DBError(f"获取审计日志失败：{e!s}")
 

@@ -19,7 +19,7 @@ from .webui import run_server  # type:ignore
 
 
 @register(
-    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.0.7"
+    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.0.8"
 )
 class AIOCensor(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -84,7 +84,7 @@ class AIOCensor(Star):
                 )
             logger.debug("审查器数据已更新")
         except Exception as e:
-            logger.error(f"更新审查器数据失败: {e}")
+            logger.error(f"更新审查器数据失败: {e!s}")
 
     async def _handle_aiocqhttp_group_message(
         self, event: AstrMessageEvent, res: CensorResult
@@ -125,7 +125,7 @@ class AIOCensor(Star):
                     client=event.bot,
                 )
             except Exception as e:
-                logger.error(f"消息处置失败: {e}")
+                logger.error(f"消息处置失败: {e!s}")
 
     async def handle_message(
         self, event: AstrMessageEvent, chain: list[BaseMessageComponent]
@@ -161,7 +161,7 @@ class AIOCensor(Star):
                         event.stop_event()
                         break
         except Exception as e:
-            logger.error(f"消息审查失败: {e}")
+            logger.error(f"消息审查失败: {e!s}")
 
     @filter.event_message_type(EventMessageType.ALL)
     async def on_all_message(self, event: AstrMessageEvent):
@@ -234,4 +234,4 @@ class AIOCensor(Star):
                     self.web_ui_process.kill()
                     logger.warning("web_ui_process 未在 5 秒内退出，强制终止")
         except Exception as e:
-            logger.error(f"资源清理失败: {e}")
+            logger.error(f"资源清理失败: {e!s}")

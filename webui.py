@@ -1,5 +1,6 @@
 import asyncio
 import os
+import atexit
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Any
@@ -27,6 +28,8 @@ class WebUIServer:
             os.makedirs(data_path)
         self._db_mgr = DBManager(os.path.join(data_path, "censor.db"))
         self._db_mgr.initialize()
+        # fallback
+        atexit.register(self._db_mgr.close)
         self._app = Quart(__name__, static_folder="static", static_url_path="")
         self._password = password
         self._secret_key = secret_key

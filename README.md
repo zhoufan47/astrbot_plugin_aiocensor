@@ -1,7 +1,7 @@
 # astrbot_plugin_aiocensor
 
 > [!important]
-> 本项目处于Beta阶段，仅保证审核功能正常工作。WebUI大部分功能未完成。 
+> WebUI大部分功能未完成。 
 >
 > 本项目依赖kwmatcher进行本地关键词匹配。理论上这些依赖会自动安装。
 >

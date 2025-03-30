@@ -56,8 +56,39 @@ Astrbot 综合内容安全+群管插件。
 
 ### 多提供商支持
 
+> [!note]
+> 图片链接是指的是将图片的URL地址提交给API进行审核。API会根据该URL自行下载图片内容并执行审核。若图片URL下载超时（阿里云API限制为7秒，腾讯云API限制为3秒），审核就会失败。这时会将图片文件的Base64提交给API进行重试（因为Base64可以规避下载超时问题）
+
 除去本地审核外，还支持：
 
-- 阿里云内容安全（文本、图片链接）
-- 腾讯内容安全（文本、图片链接、图片base64）
-- 基于OpenAI兼容的LLM审核（文本、图片链接、图片base64）
+#### 阿里云内容安全（文本、图片链接）
+
+![image](https://github.com/user-attachments/assets/d2936efc-5cb8-4855-96a2-238d538d8fe4)
+
+开通地址：https://www.aliyun.com/product/lvwang
+
+关于accesskeyID与accesskeySecret：https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair
+
+更多信息请参阅阿里云官方文档：https://help.aliyun.com/document_detail/2525371.html
+
+#### 腾讯内容安全（文本、图片链接、图片base64）
+
+> [!note]
+> 暂不支持Biztype。
+
+![image](https://github.com/user-attachments/assets/52e57412-47fd-480a-b799-d42cc17e26ac)
+
+![image](https://github.com/user-attachments/assets/308db025-98e5-4bae-94b4-c58d8e73ac01)
+
+开通地址：
+- https://cloud.tencent.com/product/tms
+- https://cloud.tencent.com/product/ims
+
+请参阅官方文档：https://cloud.tencent.com/document/product/1124/37119
+
+#### 基于OpenAI兼容的LLM审核（文本、图片链接、图片base64）
+
+> [!note]
+> 只有VL模型才支持审核图片。
+
+请参阅提供商文档。

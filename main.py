@@ -19,7 +19,7 @@ from .webui import run_server  # type:ignore
 
 
 @register(
-    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.1.0"
+    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.1.1"
 )
 class AIOCensor(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -148,7 +148,9 @@ class AIOCensor(Star):
 
                 if res and res.risk_level != RiskLevel.Pass:
                     res.extra = {"user_id_str": event.get_sender_id()}
-                    self.db_mgr.add_audit_log(res)
+                    # 只有在启用日志记录时才添加审核日志
+                    if self.config.get("enable_audit_log", True):
+                        self.db_mgr.add_audit_log(res)
 
                     if res.risk_level == RiskLevel.Block:
                         if (
@@ -171,7 +173,8 @@ class AIOCensor(Star):
                 event.get_sender_id(), event.unified_msg_origin
             )
             if res.risk_level == RiskLevel.Block:
-                self.db_mgr.add_audit_log(res)
+                if self.config.get("enable_audit_log", True):
+                    self.db_mgr.add_audit_log(res)
                 event.stop_event()
                 return
         if (
@@ -207,7 +210,8 @@ class AIOCensor(Star):
                 )
                 if res and res.risk_level != RiskLevel.Pass:
                     res.extra = {"user_id_str": event.get_sender_id()}
-                    self.db_mgr.add_audit_log(res)
+                    if self.config.get("enable_audit_log", True):
+                        self.db_mgr.add_audit_log(res)
                     if res.risk_level == RiskLevel.Block:
                         if (
                             event.get_platform_name() == "aiocqhttp"

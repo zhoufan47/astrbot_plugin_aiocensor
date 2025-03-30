@@ -1,7 +1,7 @@
 # astrbot_plugin_aiocensor
 
 > [!important]
-> WebUI大部分功能未完成。 
+> WebUI大部分功能未完成，且WebUI功能不稳定。如使用阿里云/腾讯云服务，建议关闭WebUI的审核日志记录。
 >
 > 本项目依赖kwmatcher进行本地关键词匹配。理论上这些依赖会自动安装。
 >
@@ -74,7 +74,7 @@ Astrbot 综合内容安全+群管插件。
 #### 腾讯内容安全（文本、图片链接、图片base64）
 
 > [!note]
-> 暂不支持Biztype。
+> 暂不支持Biztype。预计在0.1.2前支持.
 
 ![image](https://github.com/user-attachments/assets/52e57412-47fd-480a-b799-d42cc17e26ac)
 

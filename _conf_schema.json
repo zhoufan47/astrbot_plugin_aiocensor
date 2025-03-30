@@ -7,6 +7,10 @@
     "description":"记录黑名单拦截日志",
     "type":"bool"
   },
+  "enable_audit_log":{
+    "description":"记录审核日志",
+    "type":"bool"
+  },
   "enable_output_censor":{
     "description":"是否启用LLM输出审核",
     "type":"bool"

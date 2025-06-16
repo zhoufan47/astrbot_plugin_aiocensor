@@ -19,7 +19,7 @@ from .webui import run_server  # type:ignore
 
 
 @register(
-    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.1.1"
+    "astrbot_plugin_aiocensor", "Raven95676", "Astrbot综合内容安全+群管插件", "v0.1.2"
 )
 class AIOCensor(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -114,7 +114,7 @@ class AIOCensor(Star):
         if (
             res.risk_level == RiskLevel.Block
             and self.config.get("enable_group_msg_censor")
-            and not await admin_check(user_id, group_id, self_id, event.bot)
+            and await admin_check(user_id, group_id, self_id, event.bot)
         ):
             try:
                 await dispose_msg(

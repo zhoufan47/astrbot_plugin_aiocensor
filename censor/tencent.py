@@ -122,7 +122,7 @@ class TencentAuth:
         service: str,
         host: str,
         action: str,
-        payload: str,
+        payload: str
     ) -> dict[str, str]:
         """
         准备腾讯云API请求头。
@@ -132,6 +132,7 @@ class TencentAuth:
             host (str): 腾讯云服务的主机地址，例如 "tms.tencentcloudapi.com"。
             action (str): 腾讯云API操作名称，例如 "TextModeration"。
             payload (str): 请求的JSON负载数据。
+            biztype (str): 业务类型。
 
         Returns:
             dict[str, str]: 包含请求头的字典，包括签名信息、内容类型、主机、区域、操作、时间戳和版本。
@@ -143,7 +144,7 @@ class TencentAuth:
             service,
             host,
             action,
-            payload,
+            payload
         )
 
         headers = {
@@ -219,14 +220,14 @@ class TencentCensor(CensorBase):
 
         risk_words_set: set[str] = set()
         payload = json.dumps(
-            {"Content": str(base64.b64encode(text.encode("utf-8")).decode("utf-8"))}
+            {"Content": str(base64.b64encode(text.encode("utf-8")).decode("utf-8")),"BizType":"text_chat"}
         )
 
         headers = self._auth.prepare_request_headers(
             service="tms",
             host="tms.tencentcloudapi.com",
             action="TextModeration",
-            payload=payload,
+            payload=payload
         )
         async with self._semaphore:
             async with self._session.post(
@@ -309,9 +310,9 @@ class TencentCensor(CensorBase):
 
         if image.startswith("base64://"):
             image_content = image[9:]
-            payload = json.dumps({"FileContent": image_content})
+            payload = json.dumps({"FileContent": image_content,"BizType":"image_chat"})
         elif image.startswith("http"):
-            payload = json.dumps({"FileUrl": image})
+            payload = json.dumps({"FileUrl": image,"BizType":"image_chat"})
         else:
             raise CensorError("预期外的输入")
 

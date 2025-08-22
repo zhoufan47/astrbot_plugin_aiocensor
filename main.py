@@ -33,6 +33,9 @@ class AIOCensor(Star):
         data_path = os.path.join(os.getcwd(), "data", "aiocensor")
         os.makedirs(data_path, exist_ok=True)
         self.db_mgr = DBManager(os.path.join(data_path, "censor.db"))
+        self.ban_switch = config.get('enable_group_msg_ban',False)
+        self.recall_switch = config.get('enable_group_msg_recall',False)
+
 
     async def initialize(self):
         logger.debug("初始化 AIOCensor 组件")
@@ -101,6 +104,12 @@ class AIOCensor(Star):
         user_id = int(event.get_sender_id())
         self_id = int(event.get_self_id())
         message_id = int(event.message_obj.message_id)
+        #WhiteList 監視
+        if self.config.get("enable_whitelist"):
+            whitelist = self.config.get("whitelist", [])
+            # WhiteList に登録されている場合､処理をスキップ
+            if user_id in whitelist:
+                return
 
         res.extra.update(
             {
@@ -114,7 +123,8 @@ class AIOCensor(Star):
         if (
             res.risk_level == RiskLevel.Block
             and self.config.get("enable_group_msg_censor")
-            and await admin_check(user_id, group_id, self_id, event.bot)
+            and await admin_check(user_id, group_id, self_id, event.bot,
+                                  )
         ):
             try:
                 await dispose_msg(
@@ -122,6 +132,8 @@ class AIOCensor(Star):
                     group_id=group_id,
                     user_id=user_id,
                     self_id=self_id,
+                    ban_switch = self.ban_switch,
+                    recall_switch= self.recall_switch,
                     client=event.bot,
                 )
             except Exception as e:
@@ -194,8 +206,13 @@ class AIOCensor(Star):
             return
         await self.handle_message(event, event.message_obj.message)
 
+
     @filter.event_message_type(EventMessageType.PRIVATE_MESSAGE)
     async def private_censor(self, event: AstrMessageEvent):
+        if self.config.get("enable_whitelist"):
+            whitelist = self.config.get("whitelist", [])
+            if event.get_sender_id() in whitelist:
+                return
         """私聊消息审查"""
         if self.config.get("enable_private_msg_censor"):
             await self.handle_message(event, event.message_obj.message)

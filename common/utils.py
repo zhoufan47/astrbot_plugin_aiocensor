@@ -108,7 +108,7 @@ async def admin_check(
 
 # 本段代码修改自https://raw.githubusercontent.com/zouyonghe/astrbot_plugin_anti_porn/refs/heads/master/main.py
 async def dispose_msg(
-    message_id: int, group_id: int, user_id: int, self_id: int, client: CQHttp
+    message_id: int, group_id: int, user_id: int, self_id: int, client: CQHttp,ban_switch:bool,recall_switch:bool
 ):
     """删除消息并禁言用户
 
@@ -120,16 +120,17 @@ async def dispose_msg(
         client: CQHttp客户端
     """
     try:
-        await client.delete_msg(
-            message_id=message_id,
-            self_id=self_id,
-        )
-
-        await client.set_group_ban(
-            group_id=group_id,
-            user_id=user_id,
-            duration=5 * 60,
-            self_id=self_id,
-        )
+        if recall_switch:
+            await client.delete_msg(
+                message_id=message_id,
+                self_id=self_id,
+            )
+        if ban_switch:
+            await client.set_group_ban(
+                group_id=group_id,
+                user_id=user_id,
+                duration=5 * 60,
+                self_id=self_id,
+            )
     except Exception as e:
         logger.error(f"发生错误，无法禁言及撤回： {e}")
